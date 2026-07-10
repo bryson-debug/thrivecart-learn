@@ -7,11 +7,14 @@
 
 const CANDIDATES = (email) => [
   { label: 'products (external)', method: 'GET', path: '/api/external/products' },
-  { label: 'courses (external)', method: 'GET', path: '/api/external/courses' },
-  { label: 'customer (external, query email)', method: 'GET', path: `/api/external/customer?email=${encodeURIComponent(email)}` },
-  { label: 'customers (external, query email)', method: 'GET', path: `/api/external/customers?email=${encodeURIComponent(email)}` },
-  { label: 'students (external, query email)', method: 'GET', path: `/api/external/students?email=${encodeURIComponent(email)}` },
-  { label: 'students (external) - method check only', method: 'HEAD', path: '/api/external/students' },
+  // GET returned "method.invalid" (501) for all of these -- ThriveCart's
+  // external API appears to be POST-only even for lookups. Test that.
+  { label: 'customer (POST, body email)', method: 'POST', path: '/api/external/customer', body: { email } },
+  { label: 'customers (POST, body email)', method: 'POST', path: '/api/external/customers', body: { email } },
+  // No course_id on purpose -- if this endpoint is "enroll", omitting a
+  // required field should just 400/validation-error, not mutate anything.
+  // If it instead returns existing enrollments, that's our lookup endpoint.
+  { label: 'students (POST, email only -- no course_id)', method: 'POST', path: '/api/external/students', body: { email } },
 ];
 
 module.exports = async (req, res) => {
@@ -35,7 +38,12 @@ module.exports = async (req, res) => {
     try {
       const resp = await fetch(url, {
         method: c.method,
-        headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' },
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+          ...(c.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(c.body ? { body: JSON.stringify(c.body) } : {}),
       });
       const bodyText = c.method === 'HEAD' ? '' : (await resp.text()).slice(0, 1500);
       results.push({ label: c.label, url, status: resp.status, body: bodyText });
