@@ -1,0 +1,19 @@
+{
+  "name": "thrivecart-learn-helpscout-sidebar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HelpScout sidebar app showing ThriveCart Learn access, with grant/revoke support.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "vercel": "^37.0.0"
+  }
+}
