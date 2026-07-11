@@ -60,20 +60,14 @@ const FLODESK_BUTTON_STYLE = {
 
 export default function App() {
   const context = useHelpScoutContext() || {};
-  // Per @helpscout/javascript-sdk's Context type: `user` is the logged-in
-  // agent viewing this sidebar, and `customer` is the person on the
-  // conversation -- their email lives in a `emails` array, not `.email`.
-  const contextAgentEmail = context.user?.email || '';
+  // Per @helpscout/javascript-sdk's Context type: `customer` is the person
+  // on the conversation -- their email lives in a `emails` array, not
+  // `.email`.
   const customerEmail = context.customer?.emails?.[0]?.value || '';
 
-  const [agentEmail, setAgentEmail] = useState(contextAgentEmail);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState(null);
   const [library, setLibrary] = useState(null);
-
-  useEffect(() => {
-    if (contextAgentEmail) setAgentEmail(contextAgentEmail);
-  }, [contextAgentEmail]);
 
   function loadLibrary() {
     if (!customerEmail) return;
@@ -96,17 +90,6 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 13, padding: 12 }}>
-      <p>
-        <strong>Your email</strong> (for the audit log){' '}
-        <input
-          type="email"
-          value={agentEmail}
-          onChange={(e) => setAgentEmail(e.target.value)}
-          placeholder="you@thatmusicteacher.com"
-          style={{ width: '100%', marginTop: 4 }}
-        />
-      </p>
-
       {!customerEmail && <p>No customer email found on this conversation.</p>}
 
       {customerEmail && (
@@ -138,7 +121,7 @@ export default function App() {
               rel="noreferrer"
               style={FLODESK_BUTTON_STYLE}
             >
-              Manage access in ThriveCart Learn →
+              View in ThriveCart
             </a>
           </p>
         </>
