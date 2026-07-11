@@ -2,8 +2,16 @@
   "functions": {
     "api/**/*.js": {
       "maxDuration": 10
+    },
+    "api/sidepanel-serve.js": {
+      "maxDuration": 10,
+      "includeFiles": "public/sidepanel/**"
     }
   },
+  "rewrites": [
+    { "source": "/sidepanel", "destination": "/api/sidepanel-serve" },
+    { "source": "/sidepanel/:path*", "destination": "/api/sidepanel-serve?path=:path*" }
+  ],
   "buildCommand": "npm run build",
   "outputDirectory": "public"
 }
