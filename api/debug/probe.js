@@ -1,31 +1,24 @@
 // TEMPORARY diagnostic endpoint — delete once ThriveCart's real API shape is
-// confirmed. Confirmed so far (via live probing against the real account):
-// - GET /api/external/products -> 200, list of products {product_id, name, ...}
-// - POST /api/external/customer {email} -> 200, {customer, purchases: [...]}
-// - POST /api/external/students {email, course_id} -> enroll (course_id required)
-// - /api/external/customers (plural) does not exist (501 method.invalid)
-//
-// Open question this round: does the customer lookup response include a
-// distinct "Learn course access / enrollment" field separate from purchase
-// history (important because access manually granted via /students wouldn't
-// show up as a purchase)? Scan the full response for it instead of guessing
-// from a truncated snippet.
+// confirmed. Prior rounds confirmed /api/external/{products,customer,students}
+// on thrivecart.com, but customer lookups only return purchases/subscriptions
+// -- no distinct "Learn access/enrollment" field, and manually-granted access
+// is invisible there entirely. This round tests two more hypotheses:
+// 1. A separate /api/learn/* namespace (Learn might not live under /external).
+// 2. The account's own Learn subdomain (thatmusicteacher.thrivecart.com)
+//    exposing its own API, distinct from the main thrivecart.com/api/external.
 //
 // Visit: /api/debug/probe?token=tmt-debug-2026&email=you@example.com
 
-function findRelevantKeys(obj, pattern, path = '', out = [], depth = 0) {
-  if (depth > 6 || out.length >= 25 || obj === null || typeof obj !== 'object') return out;
-  for (const [key, value] of Object.entries(obj)) {
-    const nextPath = path ? `${path}.${key}` : key;
-    if (pattern.test(key)) {
-      out.push({ path: nextPath, value: JSON.stringify(value).slice(0, 300) });
-    }
-    if (value && typeof value === 'object') {
-      findRelevantKeys(Array.isArray(value) ? value[0] || {} : value, pattern, nextPath, out, depth + 1);
-    }
-  }
-  return out;
-}
+const CANDIDATES = (email) => [
+  { label: 'learn/customer (GET, main domain)', method: 'GET', base: 'https://thrivecart.com', path: `/api/learn/customer?email=${encodeURIComponent(email)}` },
+  { label: 'learn/customer (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/customer', body: { email } },
+  { label: 'learn/students (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/students', body: { email } },
+  { label: 'learn/enrollments (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/enrollments', body: { email } },
+  { label: 'account subdomain: api/external/customer (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/external/customer', body: { email } },
+  { label: 'account subdomain: api/students (GET)', method: 'GET', base: 'https://thatmusicteacher.thrivecart.com', path: `/api/students?email=${encodeURIComponent(email)}` },
+  { label: 'account subdomain: api/students (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/students', body: { email } },
+  { label: 'account subdomain: api/v1/students (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/v1/students', body: { email } },
+];
 
 module.exports = async (req, res) => {
   if (req.query.token !== 'tmt-debug-2026') {
@@ -40,34 +33,26 @@ module.exports = async (req, res) => {
   }
 
   const email = req.query.email || 'bryson@thatmusicteacher.com';
-  const base = process.env.THRIVECART_API_BASE_URL || 'https://thrivecart.com';
 
-  const resp = await fetch(`${base}/api/external/customer`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  const rawText = await resp.text();
-
-  let parsed;
-  try {
-    parsed = JSON.parse(rawText);
-  } catch {
-    res.status(200).json({ email, status: resp.status, note: 'response was not JSON', body: rawText.slice(0, 2000) });
-    return;
+  const results = [];
+  for (const c of CANDIDATES(email)) {
+    const url = `${c.base}${c.path}`;
+    try {
+      const resp = await fetch(url, {
+        method: c.method,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+          ...(c.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(c.body ? { body: JSON.stringify(c.body) } : {}),
+      });
+      const bodyText = (await resp.text()).slice(0, 800);
+      results.push({ label: c.label, url, status: resp.status, body: bodyText });
+    } catch (err) {
+      results.push({ label: c.label, url, error: String(err) });
+    }
   }
 
-  const topLevelKeys = Object.keys(parsed);
-  const firstPurchaseKeys = Array.isArray(parsed.purchases) && parsed.purchases[0] ? Object.keys(parsed.purchases[0]) : null;
-  const relevant = findRelevantKeys(parsed, /course|enroll|access|learn|product/i);
-
-  res.status(200).json({
-    email,
-    status: resp.status,
-    topLevelKeys,
-    firstPurchaseKeys,
-    purchaseCount: Array.isArray(parsed.purchases) ? parsed.purchases.length : null,
-    relevantKeyMatches: relevant,
-    fullBodyTruncated: rawText.slice(0, 4000),
-  });
+  res.status(200).json({ email, results });
 };
