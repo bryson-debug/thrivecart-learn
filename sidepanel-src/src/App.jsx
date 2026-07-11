@@ -115,7 +115,11 @@ export default function App() {
 
           <p style={{ marginTop: 16 }}>
             <a
-              href="https://thrivecart.com/thatmusicteacher/#/learn/students"
+              href={
+                library?.found
+                  ? `https://thrivecart.com/thatmusicteacher/#/learn/students/view/${library.library.studentId}`
+                  : 'https://thrivecart.com/thatmusicteacher/#/learn/students'
+              }
               target="_blank"
               rel="noreferrer"
               style={FLODESK_BUTTON_STYLE}
