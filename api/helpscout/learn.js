@@ -19,6 +19,14 @@ function escapeHtml(str) {
 }
 
 module.exports = async (req, res) => {
+  // HelpScout (or some intermediary) appears to issue a plain GET with no
+  // body/signature, likely a reachability check before the real signed POST
+  // content callback. Signature verification only applies to that POST.
+  if (req.method === 'GET') {
+    res.status(200).json({ ok: true });
+    return;
+  }
+
   const rawBody = await readRawBody(req);
   const signature = req.headers['x-helpscout-signature'];
   const secret = process.env.HELPSCOUT_APP_SECRET;
