@@ -39,7 +39,7 @@ function CoursePill({ course }) {
       }}
     >
       {course.courseName}
-      <strong>· {STATUS_LABELS[course.status] || 'Unknown'}</strong>
+      <strong>{STATUS_LABELS[course.status] || 'Unknown'}</strong>
     </span>
   );
 }
