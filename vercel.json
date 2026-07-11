@@ -1,11 +1,11 @@
 {
   "functions": {
-    "api/**/*.js": {
-      "maxDuration": 10
-    },
     "api/sidepanel-serve.js": {
       "maxDuration": 10,
       "includeFiles": "public/sidepanel/**"
+    },
+    "api/**/*.js": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
