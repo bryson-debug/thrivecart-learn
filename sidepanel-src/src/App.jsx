@@ -94,7 +94,6 @@ export default function App() {
 
       {customerEmail && (
         <>
-          <h3>Course library</h3>
           {libraryLoading && <p>Loading…</p>}
           {libraryError && (
             <p style={{ color: '#b00020' }}>
