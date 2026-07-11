@@ -19,11 +19,11 @@ function escapeHtml(str) {
 }
 
 module.exports = async (req, res) => {
-  // HelpScout (or some intermediary) appears to issue a plain GET with no
-  // body/signature, likely a reachability check before the real signed POST
-  // content callback. Signature verification only applies to that POST.
+  // TEMPORARY: report the real shape of a GET request instead of assuming
+  // it's just a reachability ping -- need to see if customer/ticket data
+  // arrives as query params on GET rather than a signed POST body.
   if (req.method === 'GET') {
-    res.status(200).json({ ok: true });
+    res.status(200).json({ ok: true, query: req.query, headers: req.headers });
     return;
   }
 
