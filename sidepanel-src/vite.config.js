@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   root: __dirname,
+  base: '/sidepanel/',
   plugins: [react()],
   // @hsds/tokens (a transitive dep of @helpscout/ui-kit) gets installed
   // nested under ui-kit's own node_modules rather than hoisted, due to a
