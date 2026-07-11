@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useHelpScoutContext } from '@helpscout/ui-kit';
-import HelpScout, { NOTIFICATION_TYPES } from '@helpscout/javascript-sdk';
 
 const SIDEPANEL_SECRET = import.meta.env.VITE_SIDEPANEL_SECRET || '';
 
@@ -45,6 +44,20 @@ function CoursePill({ course }) {
   );
 }
 
+const FLODESK_BUTTON_STYLE = {
+  display: 'inline-block',
+  background: '#314DDB',
+  color: '#FFFFFF',
+  fontSize: 13,
+  fontWeight: 700,
+  borderRadius: 6,
+  padding: '6px 12px',
+  border: 'none',
+  cursor: 'pointer',
+  textDecoration: 'none',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif',
+};
+
 export default function App() {
   const context = useHelpScoutContext() || {};
   // Per @helpscout/javascript-sdk's Context type: `user` is the logged-in
@@ -52,14 +65,8 @@ export default function App() {
   // conversation -- their email lives in a `emails` array, not `.email`.
   const contextAgentEmail = context.user?.email || '';
   const customerEmail = context.customer?.emails?.[0]?.value || '';
-  const conversationId = context.conversation?.id || '';
 
   const [agentEmail, setAgentEmail] = useState(contextAgentEmail);
-  const [error, setError] = useState(null);
-  const [courseId, setCourseId] = useState('');
-  const [productName, setProductName] = useState('');
-  const [staged, setStaged] = useState(false);
-  const [granting, setGranting] = useState(false);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState(null);
   const [library, setLibrary] = useState(null);
@@ -86,28 +93,6 @@ export default function App() {
     loadLibrary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerEmail]);
-
-  async function handleConfirmGrant() {
-    setGranting(true);
-    setError(null);
-    try {
-      const resp = await apiFetch('/api/learn/grant', {
-        method: 'POST',
-        body: JSON.stringify({ email: customerEmail, courseId, agentEmail, conversationId, productName }),
-      });
-      const body = await resp.json();
-      if (!resp.ok) throw new Error(body.error || `grant failed (${resp.status})`);
-      HelpScout.showNotification(NOTIFICATION_TYPES.SUCCESS, `Granted access to ${customerEmail}`);
-      setStaged(false);
-      setCourseId('');
-      setProductName('');
-      loadLibrary();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setGranting(false);
-    }
-  }
 
   return (
     <div style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', fontSize: 13, padding: 12 }}>
@@ -146,59 +131,13 @@ export default function App() {
             </div>
           )}
 
-          <h3>Grant Learn access</h3>
-          <p style={{ color: '#666' }}>
-            There's no API to pause, disable, or unenroll a course. Manage existing access directly
-            in ThriveCart's own dashboard (link below).
-          </p>
-          {error && <p style={{ color: '#b00020' }}>{error}</p>}
-          <label>
-            Course ID (from the ThriveCart Learn dashboard URL)
-            <input
-              type="text"
-              value={courseId}
-              onChange={(e) => setCourseId(e.target.value)}
-              placeholder="e.g. 224249"
-              style={{ width: '100%', marginTop: 4 }}
-            />
-          </label>
-          <label style={{ display: 'block', marginTop: 8 }}>
-            Product/course name (for the audit log, optional)
-            <input
-              type="text"
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-              style={{ width: '100%', marginTop: 4 }}
-            />
-          </label>
-
-          {!staged ? (
-            <button
-              style={{ marginTop: 8 }}
-              disabled={!courseId || !agentEmail}
-              onClick={() => setStaged(true)}
-            >
-              Grant access…
-            </button>
-          ) : (
-            <div style={{ marginTop: 8, border: '1px solid #e0a800', padding: 8, borderRadius: 4 }}>
-              <p>
-                <strong>Confirm:</strong> grant course <code>{courseId}</code> to {customerEmail}?
-              </p>
-              <p style={{ color: '#8a6d00' }}>
-                Granting this access may trigger an automated email to the customer.
-              </p>
-              <button disabled={granting} onClick={handleConfirmGrant}>
-                {granting ? 'Granting…' : 'Confirm grant'}
-              </button>{' '}
-              <button disabled={granting} onClick={() => setStaged(false)}>
-                Cancel
-              </button>
-            </div>
-          )}
-
           <p style={{ marginTop: 16 }}>
-            <a href="https://thrivecart.com/thatmusicteacher/#/learn/students" target="_blank" rel="noreferrer">
+            <a
+              href="https://thrivecart.com/thatmusicteacher/#/learn/students"
+              target="_blank"
+              rel="noreferrer"
+              style={FLODESK_BUTTON_STYLE}
+            >
               Manage access in ThriveCart Learn →
             </a>
           </p>
