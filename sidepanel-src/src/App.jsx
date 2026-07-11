@@ -178,8 +178,8 @@ export default function App() {
 
           <h3>Grant Learn access</h3>
           <p style={{ color: '#666' }}>
-            ThriveCart's API only supports granting access, not viewing current access or revoking it.
-            Manage existing access directly in ThriveCart's own dashboard (link below).
+            There's no API to pause, disable, or unenroll a course. Manage existing access directly
+            in ThriveCart's own dashboard (link below).
           </p>
           {error && <p style={{ color: '#b00020' }}>{error}</p>}
           <label>
