@@ -1,22 +1,57 @@
 // TEMPORARY, ONE-TIME diagnostic endpoint. Delete after use.
 //
-// Actually grants a real product to a real email via ThriveCart's API (this
-// WILL trigger ThriveCart's automated "welcome" email per spec 4.3), then
-// tries several candidate reversal endpoints to discover whether any kind of
-// revoke/unenroll/cancel path exists. Only reachable with an explicit
-// confirm=yes param on top of the token, since unlike probe.js this mutates
+// Grants a real product to a real email via ThriveCart's API (triggers
+// ThriveCart's automated "welcome" email per spec 4.3), then tries candidate
+// reversal endpoints to discover whether any kind of revoke/unenroll/cancel
+// path exists. Gated by token+confirm since (unlike probe.js) this mutates
 // real account data.
 //
-// Visit: /api/debug/grant-revoke-test?token=tmt-debug-2026-grant&confirm=yes&email=you@example.com&courseId=70
+// First call (grants + tries path-style revoke candidates):
+//   ?token=tmt-debug-2026-grant&confirm=yes&email=...&courseId=224249
+// Follow-up call against the resulting real enrollment, without granting
+// again (tries status-toggle-style revoke candidates instead):
+//   ?token=tmt-debug-2026-grant&confirm=yes&email=...&courseId=224249&studentId=5559816
 
-const REVOKE_CANDIDATES = (email, courseId, studentId) => [
-  { label: 'DELETE /api/external/students (body email+course_id)', method: 'DELETE', path: '/api/external/students', body: { email, course_id: courseId } },
-  { label: 'POST /api/external/students/revoke', method: 'POST', path: '/api/external/students/revoke', body: { email, course_id: courseId } },
-  { label: 'POST /api/external/students/remove', method: 'POST', path: '/api/external/students/remove', body: { email, course_id: courseId } },
-  { label: 'POST /api/external/students/cancel', method: 'POST', path: '/api/external/students/cancel', body: { email, course_id: courseId } },
-  { label: 'POST /api/external/students/unenroll', method: 'POST', path: '/api/external/students/unenroll', body: { email, course_id: courseId } },
-  ...(studentId ? [{ label: `DELETE /api/external/students/${studentId}`, method: 'DELETE', path: `/api/external/students/${studentId}` }] : []),
-];
+function pathRevokeCandidates(email, courseId, studentId) {
+  return [
+    { label: 'DELETE /api/external/students (body email+course_id)', method: 'DELETE', path: '/api/external/students', body: { email, course_id: courseId } },
+    { label: 'POST /api/external/students/revoke', method: 'POST', path: '/api/external/students/revoke', body: { email, course_id: courseId } },
+    { label: 'POST /api/external/students/remove', method: 'POST', path: '/api/external/students/remove', body: { email, course_id: courseId } },
+    { label: 'POST /api/external/students/cancel', method: 'POST', path: '/api/external/students/cancel', body: { email, course_id: courseId } },
+    { label: 'POST /api/external/students/unenroll', method: 'POST', path: '/api/external/students/unenroll', body: { email, course_id: courseId } },
+    ...(studentId ? [{ label: `DELETE /api/external/students/${studentId}`, method: 'DELETE', path: `/api/external/students/${studentId}` }] : []),
+  ];
+}
+
+function statusToggleCandidates(email, courseId, studentId) {
+  return [
+    ...(studentId ? [
+      { label: `PUT /api/external/students/${studentId} {status:0}`, method: 'PUT', path: `/api/external/students/${studentId}`, body: { status: 0 } },
+      { label: `PATCH /api/external/students/${studentId} {status:0}`, method: 'PATCH', path: `/api/external/students/${studentId}`, body: { status: 0 } },
+      { label: `POST /api/external/students/${studentId} {status:0}`, method: 'POST', path: `/api/external/students/${studentId}`, body: { status: 0 } },
+    ] : []),
+    { label: 'POST /api/external/students (re-post, status:0)', method: 'POST', path: '/api/external/students', body: { email, course_id: courseId, status: 0 } },
+    { label: 'PUT /api/external/students (email+course_id, status:0)', method: 'PUT', path: '/api/external/students', body: { email, course_id: courseId, status: 0 } },
+  ];
+}
+
+async function runCandidates(base, headers, candidates) {
+  const results = [];
+  for (const c of candidates) {
+    try {
+      const resp = await fetch(`${base}${c.path}`, {
+        method: c.method,
+        headers,
+        ...(c.body ? { body: JSON.stringify(c.body) } : {}),
+      });
+      const bodyText = (await resp.text()).slice(0, 500);
+      results.push({ label: c.label, status: resp.status, body: bodyText });
+    } catch (err) {
+      results.push({ label: c.label, error: String(err) });
+    }
+  }
+  return results;
+}
 
 module.exports = async (req, res) => {
   if (req.query.token !== 'tmt-debug-2026-grant' || req.query.confirm !== 'yes') {
@@ -33,23 +68,20 @@ module.exports = async (req, res) => {
   const base = process.env.THRIVECART_API_BASE_URL || 'https://thrivecart.com';
   const headers = { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' };
 
-  // "course_id" for /students is a distinct Learn-course identifier, not the
-  // storefront product_id from /api/external/products (confirmed: granting
-  // with a product_id 400'd as "course ID you provided does not exist").
-  // List real course IDs first -- safe, no mutation -- before attempting a
-  // real grant.
-  const coursesResp = await fetch(`${base}/api/external/courses`, { method: 'POST', headers, body: JSON.stringify({}) });
-  const coursesBodyText = await coursesResp.text();
-  let coursesBody;
-  try { coursesBody = JSON.parse(coursesBodyText); } catch { coursesBody = coursesBodyText; }
-
   const email = req.query.email;
   const courseId = req.query.courseId;
+  const existingStudentId = req.query.studentId;
 
   if (!email || !courseId) {
-    // No courseId supplied yet -- just report the course list so a real one
-    // can be picked, without granting anything.
-    res.status(200).json({ courses: coursesBody, note: 'Pass &courseId=<real id from courses list> to proceed with the grant test.' });
+    res.status(400).json({ error: 'email and courseId query params are required' });
+    return;
+  }
+
+  if (existingStudentId) {
+    // Follow-up mode: don't grant again, just try status-toggle-style revoke
+    // candidates against the enrollment that already exists.
+    const revokeAttempts = await runCandidates(base, headers, statusToggleCandidates(email, courseId, existingStudentId));
+    res.status(200).json({ mode: 'status-toggle-attempt', studentId: existingStudentId, revokeAttempts });
     return;
   }
 
@@ -62,26 +94,14 @@ module.exports = async (req, res) => {
   let grantBody;
   try { grantBody = JSON.parse(grantBodyText); } catch { grantBody = grantBodyText; }
 
-  const studentId = grantBody && (grantBody.student_id || grantBody.id);
+  const studentId = grantBody && grantBody.student && grantBody.student.id;
 
-  const revokeResults = [];
-  for (const c of REVOKE_CANDIDATES(email, courseId, studentId)) {
-    try {
-      const resp = await fetch(`${base}${c.path}`, {
-        method: c.method,
-        headers,
-        ...(c.body ? { body: JSON.stringify(c.body) } : {}),
-      });
-      const bodyText = (await resp.text()).slice(0, 500);
-      revokeResults.push({ label: c.label, status: resp.status, body: bodyText });
-    } catch (err) {
-      revokeResults.push({ label: c.label, error: String(err) });
-    }
-  }
+  const revokeAttempts = await runCandidates(base, headers, pathRevokeCandidates(email, courseId, studentId));
 
   res.status(200).json({
-    coursesListStatus: coursesResp.status,
+    mode: 'grant-then-path-attempt',
     grant: { status: grantResp.status, body: grantBody },
-    revokeAttempts: revokeResults,
+    studentId,
+    revokeAttempts,
   });
 };
