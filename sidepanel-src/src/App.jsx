@@ -15,6 +15,36 @@ function apiFetch(path, options = {}) {
   });
 }
 
+const STATUS_LABELS = { 2: 'Active', 1: 'Paused', 0: 'Disabled' };
+const STATUS_COLORS = {
+  2: { bg: '#e6f4ea', fg: '#1e7e34' },
+  1: { bg: '#fff3cd', fg: '#8a6d00' },
+  0: { bg: '#f1f1f1', fg: '#666' },
+};
+
+function CoursePill({ course }) {
+  const colors = STATUS_COLORS[course.status] || STATUS_COLORS[0];
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        background: colors.bg,
+        color: colors.fg,
+        borderRadius: 12,
+        padding: '3px 10px',
+        marginRight: 6,
+        marginBottom: 6,
+        fontSize: 12,
+      }}
+    >
+      {course.courseName}
+      <strong>· {STATUS_LABELS[course.status] || 'Unknown'}</strong>
+    </span>
+  );
+}
+
 export default function App() {
   const context = useHelpScoutContext() || {};
   // NOTE: field names below are our best read of HelpScout's context shape;
@@ -35,6 +65,9 @@ export default function App() {
   // customer than the one on this conversation).
   const [activeEmail, setActiveEmail] = useState(customerEmail);
   const [manualEmailInput, setManualEmailInput] = useState('');
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [libraryError, setLibraryError] = useState(null);
+  const [library, setLibrary] = useState(null);
 
   useEffect(() => {
     if (guessedAgentEmail) setAgentEmail(guessedAgentEmail);
@@ -43,6 +76,25 @@ export default function App() {
   useEffect(() => {
     if (customerEmail) setActiveEmail(customerEmail);
   }, [customerEmail]);
+
+  function loadLibrary() {
+    if (!activeEmail) return;
+    setLibraryLoading(true);
+    setLibraryError(null);
+    apiFetch(`/api/learn/library?email=${encodeURIComponent(activeEmail)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`lookup failed (${r.status})`);
+        return r.json();
+      })
+      .then((data) => setLibrary(data))
+      .catch((err) => setLibraryError(err.message))
+      .finally(() => setLibraryLoading(false));
+  }
+
+  useEffect(() => {
+    loadLibrary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEmail]);
 
   function handleManualSearch(e) {
     e.preventDefault();
@@ -63,6 +115,7 @@ export default function App() {
       setStaged(false);
       setCourseId('');
       setProductName('');
+      loadLibrary();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -103,6 +156,26 @@ export default function App() {
 
       {activeEmail && (
         <>
+          <h3>Course library</h3>
+          {libraryLoading && <p>Loading…</p>}
+          {libraryError && (
+            <p style={{ color: '#b00020' }}>
+              ThriveCart lookup failed: {libraryError} <button onClick={loadLibrary}>Retry</button>
+            </p>
+          )}
+          {!libraryLoading && !libraryError && library && !library.found && (
+            <p>No ThriveCart Learn record found for this email.</p>
+          )}
+          {!libraryLoading && !libraryError && library?.found && (
+            <div style={{ marginBottom: 8 }}>
+              {library.library.courses.length === 0 ? (
+                <p>No courses in this student's library.</p>
+              ) : (
+                library.library.courses.map((c) => <CoursePill key={c.courseId} course={c} />)
+              )}
+            </div>
+          )}
+
           <h3>Grant Learn access</h3>
           <p style={{ color: '#666' }}>
             ThriveCart's API only supports granting access, not viewing current access or revoking it.
