@@ -1,23 +1,15 @@
 // TEMPORARY diagnostic endpoint — delete once ThriveCart's real API shape is
-// confirmed. Prior rounds confirmed /api/external/{products,customer,students}
-// on thrivecart.com, but customer lookups only return purchases/subscriptions
-// -- no distinct "Learn access/enrollment" field, and manually-granted access
-// is invisible there entirely. This round tests two more hypotheses:
-// 1. A separate /api/learn/* namespace (Learn might not live under /external).
-// 2. The account's own Learn subdomain (thatmusicteacher.thrivecart.com)
-//    exposing its own API, distinct from the main thrivecart.com/api/external.
+// confirmed. New lead: https://thatmusicteacher.thrivecart.com/api/v1/students
+// returned {"success":false,"error":"No Endpoint: students"} -- a real JSON
+// API error (not an HTML 404), meaning a /api/v1/ API exists on the account's
+// own Learn subdomain that we haven't mapped yet. Probing endpoint names.
 //
 // Visit: /api/debug/probe?token=tmt-debug-2026&email=you@example.com
 
-const CANDIDATES = (email) => [
-  { label: 'learn/customer (GET, main domain)', method: 'GET', base: 'https://thrivecart.com', path: `/api/learn/customer?email=${encodeURIComponent(email)}` },
-  { label: 'learn/customer (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/customer', body: { email } },
-  { label: 'learn/students (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/students', body: { email } },
-  { label: 'learn/enrollments (POST, main domain)', method: 'POST', base: 'https://thrivecart.com', path: '/api/learn/enrollments', body: { email } },
-  { label: 'account subdomain: api/external/customer (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/external/customer', body: { email } },
-  { label: 'account subdomain: api/students (GET)', method: 'GET', base: 'https://thatmusicteacher.thrivecart.com', path: `/api/students?email=${encodeURIComponent(email)}` },
-  { label: 'account subdomain: api/students (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/students', body: { email } },
-  { label: 'account subdomain: api/v1/students (POST)', method: 'POST', base: 'https://thatmusicteacher.thrivecart.com', path: '/api/v1/students', body: { email } },
+const SUBDOMAIN = 'https://thatmusicteacher.thrivecart.com';
+const ENDPOINT_NAMES = [
+  'customer', 'customers', 'student', 'course', 'courses', 'enrollment',
+  'enrollments', 'access', 'learn', 'lessons', 'lesson', 'progress', 'user', 'users',
 ];
 
 module.exports = async (req, res) => {
@@ -33,26 +25,19 @@ module.exports = async (req, res) => {
   }
 
   const email = req.query.email || 'bryson@thatmusicteacher.com';
+  const headers = { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' };
 
   const results = [];
-  for (const c of CANDIDATES(email)) {
-    const url = `${c.base}${c.path}`;
+  for (const name of ENDPOINT_NAMES) {
+    const url = `${SUBDOMAIN}/api/v1/${name}`;
     try {
-      const resp = await fetch(url, {
-        method: c.method,
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          Accept: 'application/json',
-          ...(c.body ? { 'Content-Type': 'application/json' } : {}),
-        },
-        ...(c.body ? { body: JSON.stringify(c.body) } : {}),
-      });
-      const bodyText = (await resp.text()).slice(0, 800);
-      results.push({ label: c.label, url, status: resp.status, body: bodyText });
+      const resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify({ email }) });
+      const bodyText = (await resp.text()).slice(0, 500);
+      results.push({ endpoint: name, status: resp.status, body: bodyText });
     } catch (err) {
-      results.push({ label: c.label, url, error: String(err) });
+      results.push({ endpoint: name, error: String(err) });
     }
   }
 
-  res.status(200).json({ email, results });
+  res.status(200).json({ email, subdomain: SUBDOMAIN, results });
 };
