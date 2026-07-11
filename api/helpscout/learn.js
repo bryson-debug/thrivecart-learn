@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { verifySignature } = require('../../lib/helpscout-verify');
 
 // HelpScout's Legacy Dynamic App content endpoint. Disable the platform's
@@ -23,7 +24,22 @@ module.exports = async (req, res) => {
   const secret = process.env.HELPSCOUT_APP_SECRET;
 
   if (!verifySignature(rawBody, signature, secret)) {
-    res.status(401).json({ error: 'invalid signature' });
+    // TEMPORARY debug info -- remove once signature verification works.
+    // Does not expose the secret itself, just enough to diagnose a mismatch.
+    const expected = secret ? crypto.createHmac('sha1', secret).update(rawBody, 'utf8').digest('base64') : null;
+    res.status(401).json({
+      error: 'invalid signature',
+      debug: {
+        secretConfigured: Boolean(secret),
+        secretLength: secret ? secret.length : 0,
+        receivedSignatureHeader: signature || null,
+        expectedSignature: expected,
+        rawBodyLength: rawBody.length,
+        rawBodyPreview: rawBody.slice(0, 300),
+        method: req.method,
+        contentType: req.headers['content-type'] || null,
+      },
+    });
     return;
   }
 
