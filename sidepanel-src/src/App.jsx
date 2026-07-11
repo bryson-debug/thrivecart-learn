@@ -47,41 +47,32 @@ function CoursePill({ course }) {
 
 export default function App() {
   const context = useHelpScoutContext() || {};
-  // NOTE: field names below are our best read of HelpScout's context shape;
-  // the "Your email" input below is a deliberate fallback in case the SDK's
-  // agent-identity field differs from what we guessed here.
-  const customerEmail = context.user?.email || context.customer?.email || '';
-  const conversationId = context.conversation?.id || context.ticket?.id || '';
-  const guessedAgentEmail = context.agent?.email || context.currentUser?.email || '';
+  // Per @helpscout/javascript-sdk's Context type: `user` is the logged-in
+  // agent viewing this sidebar, and `customer` is the person on the
+  // conversation -- their email lives in a `emails` array, not `.email`.
+  const contextAgentEmail = context.user?.email || '';
+  const customerEmail = context.customer?.emails?.[0]?.value || '';
+  const conversationId = context.conversation?.id || '';
 
-  const [agentEmail, setAgentEmail] = useState(guessedAgentEmail);
+  const [agentEmail, setAgentEmail] = useState(contextAgentEmail);
   const [error, setError] = useState(null);
   const [courseId, setCourseId] = useState('');
   const [productName, setProductName] = useState('');
   const [staged, setStaged] = useState(false);
   const [granting, setGranting] = useState(false);
-  // Manual search fallback: starts as the conversation's own customer email,
-  // but the agent can override it (e.g. to grant access to a different
-  // customer than the one on this conversation).
-  const [activeEmail, setActiveEmail] = useState(customerEmail);
-  const [manualEmailInput, setManualEmailInput] = useState('');
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [libraryError, setLibraryError] = useState(null);
   const [library, setLibrary] = useState(null);
 
   useEffect(() => {
-    if (guessedAgentEmail) setAgentEmail(guessedAgentEmail);
-  }, [guessedAgentEmail]);
-
-  useEffect(() => {
-    if (customerEmail) setActiveEmail(customerEmail);
-  }, [customerEmail]);
+    if (contextAgentEmail) setAgentEmail(contextAgentEmail);
+  }, [contextAgentEmail]);
 
   function loadLibrary() {
-    if (!activeEmail) return;
+    if (!customerEmail) return;
     setLibraryLoading(true);
     setLibraryError(null);
-    apiFetch(`/api/learn/library?email=${encodeURIComponent(activeEmail)}`)
+    apiFetch(`/api/learn/library?email=${encodeURIComponent(customerEmail)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`lookup failed (${r.status})`);
         return r.json();
@@ -94,12 +85,7 @@ export default function App() {
   useEffect(() => {
     loadLibrary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeEmail]);
-
-  function handleManualSearch(e) {
-    e.preventDefault();
-    if (manualEmailInput.trim()) setActiveEmail(manualEmailInput.trim());
-  }
+  }, [customerEmail]);
 
   async function handleConfirmGrant() {
     setGranting(true);
@@ -107,11 +93,11 @@ export default function App() {
     try {
       const resp = await apiFetch('/api/learn/grant', {
         method: 'POST',
-        body: JSON.stringify({ email: activeEmail, courseId, agentEmail, conversationId, productName }),
+        body: JSON.stringify({ email: customerEmail, courseId, agentEmail, conversationId, productName }),
       });
       const body = await resp.json();
       if (!resp.ok) throw new Error(body.error || `grant failed (${resp.status})`);
-      HelpScout.showNotification(NOTIFICATION_TYPES.SUCCESS, `Granted access to ${activeEmail}`);
+      HelpScout.showNotification(NOTIFICATION_TYPES.SUCCESS, `Granted access to ${customerEmail}`);
       setStaged(false);
       setCourseId('');
       setProductName('');
@@ -136,25 +122,9 @@ export default function App() {
         />
       </p>
 
-      <form onSubmit={handleManualSearch} style={{ marginBottom: 12 }}>
-        <label>
-          Look up a different email
-          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-            <input
-              type="email"
-              value={manualEmailInput}
-              onChange={(e) => setManualEmailInput(e.target.value)}
-              placeholder={activeEmail || 'customer@example.com'}
-              style={{ flex: 1 }}
-            />
-            <button type="submit">Search</button>
-          </div>
-        </label>
-      </form>
+      {!customerEmail && <p>No customer email found on this conversation.</p>}
 
-      {!activeEmail && <p>No customer email found on this conversation. Use the search box above.</p>}
-
-      {activeEmail && (
+      {customerEmail && (
         <>
           <h3>Course library</h3>
           {libraryLoading && <p>Loading…</p>}
@@ -213,7 +183,7 @@ export default function App() {
           ) : (
             <div style={{ marginTop: 8, border: '1px solid #e0a800', padding: 8, borderRadius: 4 }}>
               <p>
-                <strong>Confirm:</strong> grant course <code>{courseId}</code> to {activeEmail}?
+                <strong>Confirm:</strong> grant course <code>{courseId}</code> to {customerEmail}?
               </p>
               <p style={{ color: '#8a6d00' }}>
                 Granting this access may trigger an automated email to the customer.
