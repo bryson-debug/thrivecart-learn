@@ -30,15 +30,28 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const email = req.query.email;
-  const courseId = req.query.courseId;
-  if (!email || !courseId) {
-    res.status(400).json({ error: 'email and courseId query params are required' });
-    return;
-  }
-
   const base = process.env.THRIVECART_API_BASE_URL || 'https://thrivecart.com';
   const headers = { Authorization: `Bearer ${apiKey}`, Accept: 'application/json', 'Content-Type': 'application/json' };
+
+  // "course_id" for /students is a distinct Learn-course identifier, not the
+  // storefront product_id from /api/external/products (confirmed: granting
+  // with a product_id 400'd as "course ID you provided does not exist").
+  // List real course IDs first -- safe, no mutation -- before attempting a
+  // real grant.
+  const coursesResp = await fetch(`${base}/api/external/courses`, { method: 'POST', headers, body: JSON.stringify({}) });
+  const coursesBodyText = await coursesResp.text();
+  let coursesBody;
+  try { coursesBody = JSON.parse(coursesBodyText); } catch { coursesBody = coursesBodyText; }
+
+  const email = req.query.email;
+  const courseId = req.query.courseId;
+
+  if (!email || !courseId) {
+    // No courseId supplied yet -- just report the course list so a real one
+    // can be picked, without granting anything.
+    res.status(200).json({ courses: coursesBody, note: 'Pass &courseId=<real id from courses list> to proceed with the grant test.' });
+    return;
+  }
 
   const grantResp = await fetch(`${base}/api/external/students`, {
     method: 'POST',
@@ -67,6 +80,7 @@ module.exports = async (req, res) => {
   }
 
   res.status(200).json({
+    coursesListStatus: coursesResp.status,
     grant: { status: grantResp.status, body: grantBody },
     revokeAttempts: revokeResults,
   });
