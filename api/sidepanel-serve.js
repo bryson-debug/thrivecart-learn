@@ -50,7 +50,12 @@ module.exports = async (req, res) => {
   res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
 
   if (ext === '.html') {
-    res.setHeader('Cache-Control', 'no-cache');
+    // must be no-store, not just no-cache: index.html references a
+    // content-hashed JS filename that changes every build and is deleted
+    // from disk on the next build (emptyOutDir) -- any cached copy of
+    // index.html (browser or Vercel's edge) can point at a hash that no
+    // longer exists, 404ing the whole app until the cache expires.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   } else {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
