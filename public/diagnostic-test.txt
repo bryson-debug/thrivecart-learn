@@ -1,0 +1,1 @@
+If you can read this, plain static file serving from /public works fine.
