@@ -37,16 +37,25 @@ export default function App() {
   const [productName, setProductName] = useState('');
   const [staged, setStaged] = useState(false);
   const [granting, setGranting] = useState(false);
+  // Manual search fallback: starts as the conversation's own customer email,
+  // but the agent can override it (e.g. if the conversation email doesn't
+  // match a ThriveCart record, or to look up a different customer).
+  const [activeEmail, setActiveEmail] = useState(customerEmail);
+  const [manualEmailInput, setManualEmailInput] = useState('');
 
   useEffect(() => {
     if (guessedAgentEmail) setAgentEmail(guessedAgentEmail);
   }, [guessedAgentEmail]);
 
+  useEffect(() => {
+    if (customerEmail) setActiveEmail(customerEmail);
+  }, [customerEmail]);
+
   function loadCustomer() {
-    if (!customerEmail) return;
+    if (!activeEmail) return;
     setLoading(true);
     setError(null);
-    apiFetch(`/api/learn/customer?email=${encodeURIComponent(customerEmail)}`)
+    apiFetch(`/api/learn/customer?email=${encodeURIComponent(activeEmail)}`)
       .then((r) => {
         if (!r.ok) throw new Error(`lookup failed (${r.status})`);
         return r.json();
@@ -59,7 +68,12 @@ export default function App() {
   useEffect(() => {
     loadCustomer();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customerEmail]);
+  }, [activeEmail]);
+
+  function handleManualSearch(e) {
+    e.preventDefault();
+    if (manualEmailInput.trim()) setActiveEmail(manualEmailInput.trim());
+  }
 
   async function handleConfirmGrant() {
     setGranting(true);
@@ -67,11 +81,11 @@ export default function App() {
     try {
       const resp = await apiFetch('/api/learn/grant', {
         method: 'POST',
-        body: JSON.stringify({ email: customerEmail, courseId, agentEmail, conversationId, productName }),
+        body: JSON.stringify({ email: activeEmail, courseId, agentEmail, conversationId, productName }),
       });
       const body = await resp.json();
       if (!resp.ok) throw new Error(body.error || `grant failed (${resp.status})`);
-      HelpScout.showNotification(NOTIFICATION_TYPES.SUCCESS, `Granted access to ${customerEmail}`);
+      HelpScout.showNotification(NOTIFICATION_TYPES.SUCCESS, `Granted access to ${activeEmail}`);
       setStaged(false);
       setCourseId('');
       setProductName('');
@@ -81,10 +95,6 @@ export default function App() {
     } finally {
       setGranting(false);
     }
-  }
-
-  if (!customerEmail) {
-    return <p>No customer email found on this conversation.</p>;
   }
 
   return (
@@ -100,6 +110,26 @@ export default function App() {
         />
       </p>
 
+      <form onSubmit={handleManualSearch} style={{ marginBottom: 12 }}>
+        <label>
+          Look up a different email
+          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+            <input
+              type="email"
+              value={manualEmailInput}
+              onChange={(e) => setManualEmailInput(e.target.value)}
+              placeholder={activeEmail || 'customer@example.com'}
+              style={{ flex: 1 }}
+            />
+            <button type="submit">Search</button>
+          </div>
+        </label>
+      </form>
+
+      {!activeEmail && <p>No customer email found on this conversation. Use the search box above.</p>}
+
+      {activeEmail && (
+        <>
       <h3>Purchase history</h3>
       {loading && <p>Loading…</p>}
       {error && (
@@ -161,7 +191,7 @@ export default function App() {
       ) : (
         <div style={{ marginTop: 8, border: '1px solid #e0a800', padding: 8, borderRadius: 4 }}>
           <p>
-            <strong>Confirm:</strong> grant course <code>{courseId}</code> to {customerEmail}?
+            <strong>Confirm:</strong> grant course <code>{courseId}</code> to {activeEmail}?
           </p>
           <p style={{ color: '#8a6d00' }}>
             Granting this access may trigger an automated email to the customer.
@@ -180,6 +210,8 @@ export default function App() {
           Manage access in ThriveCart Learn →
         </a>
       </p>
+        </>
+      )}
     </div>
   );
 }

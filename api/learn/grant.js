@@ -2,7 +2,6 @@ const { checkSidepanelSecret } = require('../../lib/sidepanel-auth');
 const { grantAccess } = require('../../lib/thrivecart-client');
 const { appendAuditRow } = require('../../lib/sheets-audit');
 const { checkAndRecord } = require('../../lib/rate-limit');
-const cache = require('../../lib/cache');
 
 module.exports.config = { api: { bodyParser: true } };
 
@@ -31,7 +30,6 @@ module.exports = async (req, res) => {
 
   try {
     const result = await grantAccess({ email, courseId });
-    cache.invalidate(`customer:${email.toLowerCase()}`);
 
     try {
       await appendAuditRow({

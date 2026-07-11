@@ -1,9 +1,7 @@
 const { checkSidepanelSecret } = require('../../lib/sidepanel-auth');
 const { getCustomerPurchaseHistory } = require('../../lib/thrivecart-client');
-const cache = require('../../lib/cache');
 
-const CACHE_TTL_MS = 60_000;
-
+// Per spec: always fetch live from ThriveCart, no caching layer for this app.
 module.exports = async (req, res) => {
   if (!checkSidepanelSecret(req)) {
     res.status(401).json({ error: 'unauthorized' });
@@ -16,18 +14,9 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const cacheKey = `customer:${email}`;
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    res.status(200).json(cached);
-    return;
-  }
-
   try {
     const data = await getCustomerPurchaseHistory(email);
-    const payload = { found: Boolean(data), data };
-    cache.set(cacheKey, payload, CACHE_TTL_MS);
-    res.status(200).json(payload);
+    res.status(200).json({ found: Boolean(data), data });
   } catch (err) {
     res.status(502).json({ error: 'ThriveCart lookup failed', detail: err.message });
   }
